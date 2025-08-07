@@ -50,3 +50,5 @@ const DoctorDashboard = () => {
 };
 
 export default DoctorDashboard;
+
+export { DoctorDashboard }
