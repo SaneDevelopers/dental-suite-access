@@ -22,7 +22,7 @@ export const Navbar = () => {
           {/* Logo */}
           <div className="flex items-center">
             <div className="text-2xl font-bold text-primary">
-              Bright Smile
+                Dentique The Dental Clinic
             </div>
           </div>
 
