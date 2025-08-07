@@ -132,7 +132,7 @@ export const Auth = () => {
             Back to Home
           </Button>
           <h1 className="text-3xl font-bold text-foreground mb-2">
-            Welcome to Bright Smile
+            Welcome to Dentique
           </h1>
           <p className="text-muted-foreground">
             Sign in to your account or create a new one to book appointments

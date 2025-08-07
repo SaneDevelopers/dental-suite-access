@@ -22,7 +22,7 @@ export const Navbar = () => {
           {/* Logo */}
           <div className="flex items-center">
             <div className="text-2xl font-bold text-primary">
-                Dentique 
+                Dentique The Dental Studio
             </div>
           </div>
 
@@ -77,6 +77,9 @@ export const Navbar = () => {
             <Button onClick={() => navigate('/auth')}>
               <Calendar className="h-4 w-4 mr-2" />
               Book Appointment
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/doctor-login')}>
+              Doctor Login
             </Button>
           </div>
 
@@ -140,6 +143,9 @@ export const Navbar = () => {
               <Button className="w-full" onClick={() => navigate('/auth')}>
                 <Calendar className="h-4 w-4 mr-2" />
                 Book Appointment
+              </Button>
+              <Button variant="ghost" size="sm" className="w-full" onClick={() => navigate('/doctor-login')}>
+                Doctor Login
               </Button>
             </div>
           </div>
