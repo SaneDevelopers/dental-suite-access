@@ -10,7 +10,7 @@ export const Footer = () => {
           {/* Clinic Info */}
           <div className="space-y-4">
             <div className="text-2xl font-bold text-primary">
-              Bright Smile
+              Dentique The Dental Studio
             </div>
             <p className="text-muted-foreground">
               Your trusted dental care partner, committed to providing exceptional oral health services with a gentle touch.
@@ -112,7 +112,7 @@ export const Footer = () => {
         <div className="border-t border-border mt-8 pt-8">
           <div className="flex flex-col md:flex-row justify-between items-center">
             <div className="text-sm text-muted-foreground">
-              © {currentYear} Bright Smile Dental Clinic. All rights reserved.
+              © {currentYear}   Dentique The Dental Clinic. All rights reserved.
             </div>
             <div className="flex space-x-6 mt-4 md:mt-0">
               <a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">
