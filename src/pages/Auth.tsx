@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertCircle, Calendar, ArrowLeft } from "lucide-react";
+import { AlertCircle, Calendar, ArrowLeft, Sparkles, Shield, Heart } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -119,33 +119,47 @@ export const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-accent/5 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <Button 
-            variant="ghost" 
-            onClick={() => navigate('/')}
-            className="mb-4"
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Home
-          </Button>
-          <h1 className="text-3xl font-bold text-foreground mb-2">
-            Welcome to Dentique
-          </h1>
-          <p className="text-muted-foreground">
-            Sign in to your account or create a new one to book appointments
-          </p>
-        </div>
+    <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-accent/10 relative overflow-hidden">
+      {/* Background decorative elements */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary/10 rounded-full blur-3xl"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-accent/10 rounded-full blur-3xl"></div>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-60 h-60 bg-gradient-to-r from-primary/5 to-accent/5 rounded-full blur-3xl"></div>
+      </div>
+      
+      <div className="relative z-10 flex items-center justify-center min-h-screen p-4">
+        <div className="w-full max-w-lg">
+          {/* Header */}
+          <div className="text-center mb-8">
+            <Button 
+              variant="ghost" 
+              onClick={() => navigate('/')}
+              className="mb-6 group"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2 group-hover:-translate-x-1 transition-transform" />
+              Back to Home
+            </Button>
+            
+            <div className="mb-6">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-primary to-accent rounded-2xl mb-4 shadow-lg">
+                <Calendar className="h-8 w-8 text-white" />
+              </div>
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent mb-3">
+                Welcome to Dentique
+              </h1>
+              <p className="text-lg text-muted-foreground max-w-md mx-auto">
+                Join thousands of patients who trust us with their beautiful smiles
+              </p>
+            </div>
+          </div>
 
-        <Card className="shadow-lg">
-          <CardHeader>
-            <CardTitle className="text-center flex items-center justify-center">
-              <Calendar className="h-5 w-5 mr-2 text-primary" />
-              Patient Portal
-            </CardTitle>
-          </CardHeader>
+          <Card className="backdrop-blur-sm bg-card/80 border-border/50 shadow-2xl">
+            <CardHeader className="text-center pb-2">
+              <CardTitle className="flex items-center justify-center text-xl">
+                <Sparkles className="h-5 w-5 mr-2 text-primary" />
+                Patient Portal
+              </CardTitle>
+            </CardHeader>
           <CardContent>
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="grid w-full grid-cols-2">
@@ -245,21 +259,37 @@ export const Auth = () => {
               </TabsContent>
             </Tabs>
 
-            <div className="mt-6 p-4 bg-primary/5 rounded-lg">
-              <div className="flex items-start">
-                <AlertCircle className="h-4 w-4 text-primary mt-0.5 mr-2 flex-shrink-0" />
-                <div className="text-sm">
-                  <p className="font-medium text-primary mb-1">After registration:</p>
-                  <p className="text-muted-foreground">
-                    You'll receive login credentials to access your patient portal where you can view appointments, 
-                    prescriptions, and follow-up details.
-                  </p>
+            <div className="mt-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 bg-primary/5 rounded-lg text-center">
+                  <Shield className="h-8 w-8 text-primary mx-auto mb-2" />
+                  <p className="text-sm font-medium text-primary">Secure Portal</p>
+                  <p className="text-xs text-muted-foreground">Your data is protected</p>
+                </div>
+                <div className="p-4 bg-accent/5 rounded-lg text-center">
+                  <Heart className="h-8 w-8 text-accent mx-auto mb-2" />
+                  <p className="text-sm font-medium text-accent">Expert Care</p>
+                  <p className="text-xs text-muted-foreground">Professional treatment</p>
+                </div>
+              </div>
+              
+              <div className="p-4 bg-gradient-to-r from-primary/5 to-accent/5 rounded-lg border border-primary/20">
+                <div className="flex items-start">
+                  <AlertCircle className="h-5 w-5 text-primary mt-0.5 mr-3 flex-shrink-0" />
+                  <div className="text-sm">
+                    <p className="font-medium text-primary mb-1">What you get:</p>
+                    <ul className="text-muted-foreground space-y-1">
+                      <li>• Online appointment booking</li>
+                      <li>• Digital prescriptions & reports</li>
+                      <li>• Treatment history & follow-ups</li>
+                    </ul>
+                  </div>
                 </div>
               </div>
             </div>
           </CardContent>
-        </Card>
+          </Card>
+        </div>
       </div>
-    </div>
-  );
-};
+    );
+  };

@@ -19,7 +19,13 @@ import {
   Edit,
   Upload,
   Download,
-  Eye
+  Eye,
+  Trash2,
+  DollarSign,
+  UserPlus,
+  Stethoscope,
+  Star,
+  TrendingUp
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -33,19 +39,33 @@ interface DoctorProfile {
   experience_years: number;
 }
 
+interface Patient {
+  id: string;
+  full_name: string;
+  phone: string;
+  date_of_birth: string;
+  address: string;
+  emergency_contact: string;
+  emergency_phone: string;
+  user_id: string;
+}
+
 interface Appointment {
   id: string;
   appointment_date: string;
   appointment_time: string;
   status: string;
   notes: string;
+  patient_id: string;
   profiles: {
+    id: string;
     full_name: string;
     phone: string;
   };
   services: {
     name: string;
     duration_minutes: number;
+    price: number;
   };
 }
 
@@ -55,6 +75,7 @@ interface Prescription {
   instructions: string;
   follow_up_date: string;
   created_at: string;
+  patient_id: string;
   profiles: {
     full_name: string;
   };
@@ -63,40 +84,82 @@ interface Prescription {
   };
 }
 
-interface Report {
+interface MedicalReport {
   id: string;
   title: string;
   file_url: string;
   file_name: string;
   uploaded_at: string;
-  patient_name: string;
-  appointment_date: string;
+  patient_id: string;
+  profiles: {
+    full_name: string;
+  };
+}
+
+interface BillingRecord {
+  id: string;
+  service_type: string;
+  amount: number;
+  description: string;
+  status: string;
+  created_at: string;
+  profiles: {
+    full_name: string;
+  };
 }
 
 export const DoctorDashboard = () => {
   const [user, setUser] = useState<any>(null);
   const [doctorProfile, setDoctorProfile] = useState<DoctorProfile | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [patients, setPatients] = useState<Patient[]>([]);
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
-  const [reports, setReports] = useState<Report[]>([]);
+  const [reports, setReports] = useState<MedicalReport[]>([]);
+  const [billing, setBilling] = useState<BillingRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("appointments");
+  const [activeTab, setActiveTab] = useState("dashboard");
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [prescriptionDialog, setPrescriptionDialog] = useState(false);
   const [reportDialog, setReportDialog] = useState(false);
+  const [patientDialog, setPatientDialog] = useState(false);
+  const [billingDialog, setBillingDialog] = useState(false);
   const [uploadingReport, setUploadingReport] = useState(false);
   const { toast } = useToast();
 
   const [prescriptionForm, setPrescriptionForm] = useState({
     medications: '',
     instructions: '',
-    followUpDate: ''
+    followUpDate: '',
+    patientId: '',
+    charge: '',
+    chargeDescription: ''
   });
 
   const [reportForm, setReportForm] = useState({
     title: '',
     file: null as File | null,
-    appointmentId: ''
+    patientId: '',
+    charge: '',
+    chargeDescription: ''
+  });
+
+  const [patientForm, setPatientForm] = useState({
+    fullName: '',
+    phone: '',
+    dateOfBirth: '',
+    address: '',
+    emergencyContact: '',
+    emergencyPhone: '',
+    email: '',
+    password: ''
+  });
+
+  const [billingForm, setBillingForm] = useState({
+    patientId: '',
+    serviceType: '',
+    amount: '',
+    description: ''
   });
 
   useEffect(() => {
@@ -110,24 +173,31 @@ export const DoctorDashboard = () => {
 
       setUser(user);
 
-      // For demo purposes, we'll assume the doctor's email matches a doctor in the database
-      // In a real app, you'd have a proper doctor authentication system
+      // Get the first doctor for demo purposes
       const { data: doctorData } = await supabase
         .from('doctors')
         .select('*')
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (doctorData) {
         setDoctorProfile(doctorData);
+
+        // Fetch all patients
+        const { data: patientsData } = await supabase
+          .from('profiles')
+          .select('*')
+          .order('full_name');
+
+        setPatients(patientsData || []);
 
         // Fetch appointments for this doctor
         const { data: appointmentsData } = await supabase
           .from('appointments')
           .select(`
             *,
-            profiles(full_name, phone),
-            services(name, duration_minutes)
+            profiles(id, full_name, phone),
+            services(name, duration_minutes, price)
           `)
           .eq('doctor_id', doctorData.id)
           .order('appointment_date', { ascending: true });
@@ -147,9 +217,29 @@ export const DoctorDashboard = () => {
 
         setPrescriptions(prescriptionsData || []);
 
-        // Fetch reports (we'll need to create this table)
-        // For now, we'll use a placeholder
-        setReports([]);
+        // Fetch medical reports
+        const { data: reportsData } = await supabase
+          .from('medical_reports')
+          .select(`
+            *,
+            profiles(full_name)
+          `)
+          .eq('doctor_id', doctorData.id)
+          .order('uploaded_at', { ascending: false });
+
+        setReports(reportsData || []);
+
+        // Fetch billing records
+        const { data: billingData } = await supabase
+          .from('billing')
+          .select(`
+            *,
+            profiles(full_name)
+          `)
+          .eq('doctor_id', doctorData.id)
+          .order('created_at', { ascending: false });
+
+        setBilling(billingData || []);
       }
     } catch (error) {
       console.error('Error fetching doctor data:', error);
@@ -194,8 +284,58 @@ export const DoctorDashboard = () => {
     }
   };
 
+  const handleAddPatient = async () => {
+    if (!patientForm.fullName || !patientForm.email || !patientForm.password) {
+      toast({
+        title: "Missing information",
+        description: "Please fill in all required fields.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      // Create auth user for patient
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        email: patientForm.email,
+        password: patientForm.password,
+        user_metadata: {
+          full_name: patientForm.fullName,
+          phone: patientForm.phone,
+        }
+      });
+
+      if (authError) throw authError;
+
+      // The profile will be created automatically via trigger
+      toast({
+        title: "Patient added successfully",
+        description: `${patientForm.fullName} has been added to your patients.`,
+      });
+
+      setPatientDialog(false);
+      setPatientForm({
+        fullName: '',
+        phone: '',
+        dateOfBirth: '',
+        address: '',
+        emergencyContact: '',
+        emergencyPhone: '',
+        email: '',
+        password: ''
+      });
+      fetchDoctorData();
+    } catch (error: any) {
+      toast({
+        title: "Failed to add patient",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  };
+
   const handlePrescriptionSubmit = async () => {
-    if (!selectedAppointment || !prescriptionForm.medications) {
+    if (!prescriptionForm.patientId || !prescriptionForm.medications) {
       toast({
         title: "Missing information",
         description: "Please fill in all required fields.",
@@ -208,9 +348,7 @@ export const DoctorDashboard = () => {
       const { error } = await supabase
         .from('prescriptions')
         .insert({
-          appointment_id: selectedAppointment.id,
-          patient_id: selectedAppointment.profiles ? 
-            (await supabase.from('profiles').select('id').eq('full_name', selectedAppointment.profiles.full_name).single()).data?.id : '',
+          patient_id: prescriptionForm.patientId,
           doctor_id: doctorProfile?.id,
           medications: prescriptionForm.medications,
           instructions: prescriptionForm.instructions,
@@ -219,14 +357,34 @@ export const DoctorDashboard = () => {
 
       if (error) throw error;
 
+      // Add billing if there's a charge
+      if (prescriptionForm.charge && parseFloat(prescriptionForm.charge) > 0) {
+        await supabase
+          .from('billing')
+          .insert({
+            patient_id: prescriptionForm.patientId,
+            doctor_id: doctorProfile?.id,
+            service_type: 'prescription',
+            amount: parseFloat(prescriptionForm.charge),
+            description: prescriptionForm.chargeDescription || 'Prescription fee',
+            status: 'pending'
+          });
+      }
+
       toast({
         title: "Prescription created",
         description: "Prescription has been successfully added.",
       });
 
       setPrescriptionDialog(false);
-      setPrescriptionForm({ medications: '', instructions: '', followUpDate: '' });
-      setSelectedAppointment(null);
+      setPrescriptionForm({ 
+        medications: '', 
+        instructions: '', 
+        followUpDate: '', 
+        patientId: '',
+        charge: '',
+        chargeDescription: ''
+      });
       fetchDoctorData();
     } catch (error: any) {
       toast({
@@ -238,7 +396,7 @@ export const DoctorDashboard = () => {
   };
 
   const handleReportUpload = async () => {
-    if (!reportForm.file || !reportForm.title || !reportForm.appointmentId) {
+    if (!reportForm.file || !reportForm.title || !reportForm.patientId) {
       toast({
         title: "Missing information",
         description: "Please fill in all required fields and select a file.",
@@ -266,15 +424,48 @@ export const DoctorDashboard = () => {
         .from('medical-reports')
         .getPublicUrl(filePath);
 
-      // Save report info to database (we'll need to create this table)
-      // For now, we'll just show success message
+      // Save report info to database
+      const { error: dbError } = await supabase
+        .from('medical_reports')
+        .insert({
+          patient_id: reportForm.patientId,
+          doctor_id: doctorProfile?.id,
+          title: reportForm.title,
+          file_url: publicUrl,
+          file_name: reportForm.file.name,
+          file_type: reportForm.file.type
+        });
+
+      if (dbError) throw dbError;
+
+      // Add billing if there's a charge
+      if (reportForm.charge && parseFloat(reportForm.charge) > 0) {
+        await supabase
+          .from('billing')
+          .insert({
+            patient_id: reportForm.patientId,
+            doctor_id: doctorProfile?.id,
+            service_type: 'report',
+            amount: parseFloat(reportForm.charge),
+            description: reportForm.chargeDescription || 'Medical report fee',
+            status: 'pending'
+          });
+      }
+
       toast({
         title: "Report uploaded",
         description: "Medical report has been successfully uploaded.",
       });
 
       setReportDialog(false);
-      setReportForm({ title: '', file: null, appointmentId: '' });
+      setReportForm({ 
+        title: '', 
+        file: null, 
+        patientId: '',
+        charge: '',
+        chargeDescription: ''
+      });
+      fetchDoctorData();
     } catch (error: any) {
       toast({
         title: "Upload failed",
@@ -286,14 +477,102 @@ export const DoctorDashboard = () => {
     }
   };
 
+  const handleDeletePatient = async (patientId: string) => {
+    if (!confirm('Are you sure you want to delete this patient? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', patientId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Patient deleted",
+        description: "Patient has been successfully removed.",
+      });
+
+      fetchDoctorData();
+    } catch (error: any) {
+      toast({
+        title: "Delete failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleAddBilling = async () => {
+    if (!billingForm.patientId || !billingForm.amount) {
+      toast({
+        title: "Missing information",
+        description: "Please fill in all required fields.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('billing')
+        .insert({
+          patient_id: billingForm.patientId,
+          doctor_id: doctorProfile?.id,
+          service_type: billingForm.serviceType,
+          amount: parseFloat(billingForm.amount),
+          description: billingForm.description,
+          status: 'pending'
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Billing record created",
+        description: "Billing record has been successfully added.",
+      });
+
+      setBillingDialog(false);
+      setBillingForm({
+        patientId: '',
+        serviceType: '',
+        amount: '',
+        description: ''
+      });
+      fetchDoctorData();
+    } catch (error: any) {
+      toast({
+        title: "Failed to create billing record",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'confirmed': return 'bg-accent text-accent-foreground';
       case 'scheduled': return 'bg-primary/10 text-primary';
       case 'completed': return 'bg-secondary text-secondary-foreground';
       case 'cancelled': return 'bg-destructive/10 text-destructive';
+      case 'paid': return 'bg-accent text-accent-foreground';
+      case 'pending': return 'bg-primary/10 text-primary';
       default: return 'bg-secondary text-secondary-foreground';
     }
+  };
+
+  const getDashboardStats = () => {
+    const todayAppointments = appointments.filter(apt => 
+      new Date(apt.appointment_date).toDateString() === new Date().toDateString()
+    ).length;
+    
+    const totalPatients = patients.length;
+    const pendingBilling = billing.filter(bill => bill.status === 'pending').length;
+    const totalRevenue = billing.filter(bill => bill.status === 'paid').reduce((sum, bill) => sum + bill.amount, 0);
+
+    return { todayAppointments, totalPatients, pendingBilling, totalRevenue };
   };
 
   if (loading) {
@@ -304,21 +583,34 @@ export const DoctorDashboard = () => {
     );
   }
 
+  const stats = getDashboardStats();
+
   return (
-    <div className="min-h-screen bg-secondary/30">
+    <div className="min-h-screen bg-secondary/20">
       {/* Header */}
-      <div className="bg-card border-b border-border">
+      <div className="bg-card border-b border-border shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
-              <h1 className="text-2xl font-bold text-primary">Dentique Doctor Portal</h1>
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-gradient-to-r from-primary to-accent rounded-xl flex items-center justify-center">
+                  <Stethoscope className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                    Dentique Doctor Portal
+                  </h1>
+                  <p className="text-xs text-muted-foreground">Professional Dashboard</p>
+                </div>
+              </div>
             </div>
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-muted-foreground">
-                Dr. {doctorProfile?.name}
-              </span>
-              <Button variant="outline" onClick={handleSignOut}>
-                <LogOut className="h-4 w-4 mr-2" />
+              <div className="text-right">
+                <p className="text-sm font-medium text-foreground">Dr. {doctorProfile?.name}</p>
+                <p className="text-xs text-muted-foreground">{doctorProfile?.specialization}</p>
+              </div>
+              <Button variant="outline" onClick={handleSignOut} className="group">
+                <LogOut className="h-4 w-4 mr-2 group-hover:rotate-12 transition-transform" />
                 Sign Out
               </Button>
             </div>
@@ -327,309 +619,647 @@ export const DoctorDashboard = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Welcome Section */}
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold text-foreground mb-2">
-            Welcome back, Dr. {doctorProfile?.name}!
-          </h2>
-          <p className="text-muted-foreground">
-            Manage your appointments, prescriptions, and patient reports.
-          </p>
-        </div>
-
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-4 mb-8">
-            <TabsTrigger value="appointments">Appointments</TabsTrigger>
-            <TabsTrigger value="prescriptions">Prescriptions</TabsTrigger>
-            <TabsTrigger value="reports">Reports</TabsTrigger>
-            <TabsTrigger value="profile">Profile</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-6 mb-8 bg-background border border-border">
+            <TabsTrigger value="dashboard" className="flex items-center space-x-2">
+              <TrendingUp className="h-4 w-4" />
+              <span className="hidden sm:inline">Dashboard</span>
+            </TabsTrigger>
+            <TabsTrigger value="appointments" className="flex items-center space-x-2">
+              <Calendar className="h-4 w-4" />
+              <span className="hidden sm:inline">Appointments</span>
+            </TabsTrigger>
+            <TabsTrigger value="patients" className="flex items-center space-x-2">
+              <User className="h-4 w-4" />
+              <span className="hidden sm:inline">Patients</span>
+            </TabsTrigger>
+            <TabsTrigger value="prescriptions" className="flex items-center space-x-2">
+              <FileText className="h-4 w-4" />
+              <span className="hidden sm:inline">Prescriptions</span>
+            </TabsTrigger>
+            <TabsTrigger value="reports" className="flex items-center space-x-2">
+              <Upload className="h-4 w-4" />
+              <span className="hidden sm:inline">Reports</span>
+            </TabsTrigger>
+            <TabsTrigger value="billing" className="flex items-center space-x-2">
+              <DollarSign className="h-4 w-4" />
+              <span className="hidden sm:inline">Billing</span>
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="appointments" className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h3 className="text-xl font-semibold">Today's Appointments</h3>
-              <Dialog open={reportDialog} onOpenChange={setReportDialog}>
-                <DialogTrigger asChild>
-                  <Button>
-                    <Upload className="h-4 w-4 mr-2" />
-                    Upload Report
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Upload Medical Report</DialogTitle>
-                  </DialogHeader>
+          <TabsContent value="dashboard" className="space-y-6">
+            {/* Welcome Section */}
+            <div className="mb-8">
+              <h2 className="text-3xl font-bold text-foreground mb-2">
+                Welcome back, Dr. {doctorProfile?.name}!
+              </h2>
+              <p className="text-muted-foreground">
+                Here's your practice overview for today.
+              </p>
+            </div>
+
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-primary">Today's Appointments</p>
+                      <p className="text-3xl font-bold text-primary">{stats.todayAppointments}</p>
+                    </div>
+                    <Calendar className="h-8 w-8 text-primary" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gradient-to-br from-accent/10 to-accent/5 border-accent/20">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-accent">Total Patients</p>
+                      <p className="text-3xl font-bold text-accent">{stats.totalPatients}</p>
+                    </div>
+                    <User className="h-8 w-8 text-accent" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gradient-to-br from-orange-500/10 to-orange-500/5 border-orange-500/20">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-orange-600">Pending Bills</p>
+                      <p className="text-3xl font-bold text-orange-600">{stats.pendingBilling}</p>
+                    </div>
+                    <Clock className="h-8 w-8 text-orange-600" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gradient-to-br from-green-500/10 to-green-500/5 border-green-500/20">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-green-600">Revenue</p>
+                      <p className="text-3xl font-bold text-green-600">${stats.totalRevenue}</p>
+                    </div>
+                    <DollarSign className="h-8 w-8 text-green-600" />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Recent Activity */}
+            <div className="grid lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <Calendar className="h-5 w-5 mr-2 text-primary" />
+                    Recent Appointments
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {appointments.slice(0, 3).map((appointment) => (
+                    <div key={appointment.id} className="flex items-center justify-between py-3 border-b last:border-0">
+                      <div>
+                        <p className="font-medium">{appointment.profiles?.full_name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {format(new Date(appointment.appointment_date), 'MMM dd')} at {appointment.appointment_time}
+                        </p>
+                      </div>
+                      <Badge className={getStatusColor(appointment.status)}>
+                        {appointment.status}
+                      </Badge>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <Activity className="h-5 w-5 mr-2 text-accent" />
+                    Recent Prescriptions
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {prescriptions.slice(0, 3).map((prescription) => (
+                    <div key={prescription.id} className="flex items-center justify-between py-3 border-b last:border-0">
+                      <div>
+                        <p className="font-medium">{prescription.profiles?.full_name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {format(new Date(prescription.created_at), 'MMM dd, yyyy')}
+                        </p>
+                      </div>
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="appointments" className="space-y-4">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold">Appointments</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full table-auto border-collapse border border-border">
+                <thead>
+                  <tr className="bg-background">
+                    <th className="border border-border px-4 py-2 text-left">Patient</th>
+                    <th className="border border-border px-4 py-2 text-left">Date</th>
+                    <th className="border border-border px-4 py-2 text-left">Time</th>
+                    <th className="border border-border px-4 py-2 text-left">Service</th>
+                    <th className="border border-border px-4 py-2 text-left">Status</th>
+                    <th className="border border-border px-4 py-2 text-left">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {appointments.map((apt) => (
+                    <tr key={apt.id} className="hover:bg-muted cursor-pointer">
+                      <td className="border border-border px-4 py-2">{apt.profiles?.full_name}</td>
+                      <td className="border border-border px-4 py-2">{format(new Date(apt.appointment_date), 'MMM dd, yyyy')}</td>
+                      <td className="border border-border px-4 py-2">{apt.appointment_time}</td>
+                      <td className="border border-border px-4 py-2">{apt.services?.name}</td>
+                      <td className="border border-border px-4 py-2">
+                        <Badge className={getStatusColor(apt.status)}>{apt.status}</Badge>
+                      </td>
+                      <td className="border border-border px-4 py-2 space-x-2">
+                        {apt.status !== 'completed' && (
+                          <>
+                            <Button size="sm" variant="outline" onClick={() => updateAppointmentStatus(apt.id, 'confirmed')}>
+                              Confirm
+                            </Button>
+                            <Button size="sm" variant="destructive" onClick={() => updateAppointmentStatus(apt.id, 'cancelled')}>
+                              Cancel
+                            </Button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="patients" className="space-y-4">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold">Patients</h2>
+              <Button onClick={() => setPatientDialog(true)}><Plus className="mr-2 h-4 w-4" /> Add Patient</Button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full table-auto border-collapse border border-border">
+                <thead>
+                  <tr className="bg-background">
+                    <th className="border border-border px-4 py-2 text-left">Name</th>
+                    <th className="border border-border px-4 py-2 text-left">Phone</th>
+                    <th className="border border-border px-4 py-2 text-left">DOB</th>
+                    <th className="border border-border px-4 py-2 text-left">Address</th>
+                    <th className="border border-border px-4 py-2 text-left">Emergency Contact</th>
+                    <th className="border border-border px-4 py-2 text-left">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {patients.map((patient) => (
+                    <tr key={patient.id} className="hover:bg-muted cursor-pointer">
+                      <td className="border border-border px-4 py-2">{patient.full_name}</td>
+                      <td className="border border-border px-4 py-2">{patient.phone}</td>
+                      <td className="border border-border px-4 py-2">{patient.date_of_birth}</td>
+                      <td className="border border-border px-4 py-2">{patient.address}</td>
+                      <td className="border border-border px-4 py-2">{patient.emergency_contact} ({patient.emergency_phone})</td>
+                      <td className="border border-border px-4 py-2 space-x-2">
+                        <Button size="sm" variant="outline" onClick={() => {
+                          setSelectedPatient(patient);
+                          setPatientDialog(true);
+                        }}>
+                          Edit
+                        </Button>
+                        <Button size="sm" variant="destructive" onClick={() => handleDeletePatient(patient.id)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Patient Dialog */}
+            <Dialog open={patientDialog} onOpenChange={setPatientDialog}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>{selectedPatient ? 'Edit Patient' : 'Add Patient'}</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (selectedPatient) {
+                    // Update patient logic here (not implemented)
+                    setPatientDialog(false);
+                  } else {
+                    await handleAddPatient();
+                  }
+                }}>
                   <div className="space-y-4">
                     <div>
-                      <Label htmlFor="report-title">Report Title</Label>
+                      <Label htmlFor="fullName">Full Name</Label>
                       <Input
-                        id="report-title"
-                        value={reportForm.title}
-                        onChange={(e) => setReportForm(prev => ({ ...prev, title: e.target.value }))}
-                        placeholder="Enter report title"
+                        id="fullName"
+                        value={patientForm.fullName}
+                        onChange={(e) => setPatientForm(prev => ({ ...prev, fullName: e.target.value }))}
+                        required
                       />
                     </div>
                     <div>
-                      <Label htmlFor="appointment-select">Select Appointment</Label>
-                      <Select value={reportForm.appointmentId} onValueChange={(value) => setReportForm(prev => ({ ...prev, appointmentId: value }))}>
+                      <Label htmlFor="phone">Phone</Label>
+                      <Input
+                        id="phone"
+                        value={patientForm.phone}
+                        onChange={(e) => setPatientForm(prev => ({ ...prev, phone: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="dateOfBirth">Date of Birth</Label>
+                      <Input
+                        id="dateOfBirth"
+                        type="date"
+                        value={patientForm.dateOfBirth}
+                        onChange={(e) => setPatientForm(prev => ({ ...prev, dateOfBirth: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="address">Address</Label>
+                      <Textarea
+                        id="address"
+                        value={patientForm.address}
+                        onChange={(e) => setPatientForm(prev => ({ ...prev, address: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="emergencyContact">Emergency Contact</Label>
+                      <Input
+                        id="emergencyContact"
+                        value={patientForm.emergencyContact}
+                        onChange={(e) => setPatientForm(prev => ({ ...prev, emergencyContact: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="emergencyPhone">Emergency Phone</Label>
+                      <Input
+                        id="emergencyPhone"
+                        value={patientForm.emergencyPhone}
+                        onChange={(e) => setPatientForm(prev => ({ ...prev, emergencyPhone: e.target.value }))}
+                      />
+                    </div>
+                    {!selectedPatient && (
+                      <>
+                        <div>
+                          <Label htmlFor="email">Email</Label>
+                          <Input
+                            id="email"
+                            type="email"
+                            value={patientForm.email}
+                            onChange={(e) => setPatientForm(prev => ({ ...prev, email: e.target.value }))}
+                            required
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="password">Password</Label>
+                          <Input
+                            id="password"
+                            type="password"
+                            value={patientForm.password}
+                            onChange={(e) => setPatientForm(prev => ({ ...prev, password: e.target.value }))}
+                            required
+                          />
+                        </div>
+                      </>
+                    )}
+                    <Button type="submit" className="w-full">
+                      {selectedPatient ? 'Update Patient' : 'Add Patient'}
+                    </Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </TabsContent>
+
+          <TabsContent value="prescriptions" className="space-y-4">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold">Prescriptions</h2>
+              <Button onClick={() => setPrescriptionDialog(true)}><Plus className="mr-2 h-4 w-4" /> New Prescription</Button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full table-auto border-collapse border border-border">
+                <thead>
+                  <tr className="bg-background">
+                    <th className="border border-border px-4 py-2 text-left">Patient</th>
+                    <th className="border border-border px-4 py-2 text-left">Medications</th>
+                    <th className="border border-border px-4 py-2 text-left">Instructions</th>
+                    <th className="border border-border px-4 py-2 text-left">Follow-up Date</th>
+                    <th className="border border-border px-4 py-2 text-left">Date Created</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {prescriptions.map((prescription) => (
+                    <tr key={prescription.id} className="hover:bg-muted cursor-pointer">
+                      <td className="border border-border px-4 py-2">{prescription.profiles?.full_name}</td>
+                      <td className="border border-border px-4 py-2">{prescription.medications}</td>
+                      <td className="border border-border px-4 py-2">{prescription.instructions}</td>
+                      <td className="border border-border px-4 py-2">{prescription.follow_up_date ? format(new Date(prescription.follow_up_date), 'MMM dd, yyyy') : 'N/A'}</td>
+                      <td className="border border-border px-4 py-2">{format(new Date(prescription.created_at), 'MMM dd, yyyy')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Prescription Dialog */}
+            <Dialog open={prescriptionDialog} onOpenChange={setPrescriptionDialog}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>New Prescription</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  handlePrescriptionSubmit();
+                }}>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="patientId">Patient</Label>
+                      <Select
+                        onValueChange={(value) => setPrescriptionForm(prev => ({ ...prev, patientId: value }))}
+                        value={prescriptionForm.patientId}
+                      >
                         <SelectTrigger>
-                          <SelectValue placeholder="Select an appointment" />
+                          <SelectValue placeholder="Select a patient" />
                         </SelectTrigger>
                         <SelectContent>
-                          {appointments.map((appointment) => (
-                            <SelectItem key={appointment.id} value={appointment.id}>
-                              {appointment.profiles?.full_name} - {format(new Date(appointment.appointment_date), 'MMM dd, yyyy')}
-                            </SelectItem>
+                          {patients.map((patient) => (
+                            <SelectItem key={patient.id} value={patient.id}>{patient.full_name}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                     <div>
-                      <Label htmlFor="report-file">Upload File</Label>
-                      <Input
-                        id="report-file"
-                        type="file"
-                        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                        onChange={(e) => setReportForm(prev => ({ ...prev, file: e.target.files?.[0] || null }))}
+                      <Label htmlFor="medications">Medications</Label>
+                      <Textarea
+                        id="medications"
+                        value={prescriptionForm.medications}
+                        onChange={(e) => setPrescriptionForm(prev => ({ ...prev, medications: e.target.value }))}
+                        required
                       />
                     </div>
-                    <div className="flex justify-end space-x-2">
-                      <Button variant="outline" onClick={() => setReportDialog(false)}>
-                        Cancel
-                      </Button>
-                      <Button onClick={handleReportUpload} disabled={uploadingReport}>
-                        {uploadingReport ? 'Uploading...' : 'Upload Report'}
-                      </Button>
+                    <div>
+                      <Label htmlFor="instructions">Instructions</Label>
+                      <Textarea
+                        id="instructions"
+                        value={prescriptionForm.instructions}
+                        onChange={(e) => setPrescriptionForm(prev => ({ ...prev, instructions: e.target.value }))}
+                      />
                     </div>
+                    <div>
+                      <Label htmlFor="followUpDate">Follow-up Date</Label>
+                      <Input
+                        id="followUpDate"
+                        type="date"
+                        value={prescriptionForm.followUpDate}
+                        onChange={(e) => setPrescriptionForm(prev => ({ ...prev, followUpDate: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="charge">Charge (optional)</Label>
+                      <Input
+                        id="charge"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={prescriptionForm.charge}
+                        onChange={(e) => setPrescriptionForm(prev => ({ ...prev, charge: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="chargeDescription">Charge Description</Label>
+                      <Input
+                        id="chargeDescription"
+                        value={prescriptionForm.chargeDescription}
+                        onChange={(e) => setPrescriptionForm(prev => ({ ...prev, chargeDescription: e.target.value }))}
+                      />
+                    </div>
+                    <Button type="submit" className="w-full">Create Prescription</Button>
                   </div>
-                </DialogContent>
-              </Dialog>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </TabsContent>
+
+          <TabsContent value="reports" className="space-y-4">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold">Medical Reports</h2>
+              <Button onClick={() => setReportDialog(true)}><Plus className="mr-2 h-4 w-4" /> Upload Report</Button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full table-auto border-collapse border border-border">
+                <thead>
+                  <tr className="bg-background">
+                    <th className="border border-border px-4 py-2 text-left">Title</th>
+                    <th className="border border-border px-4 py-2 text-left">Patient</th>
+                    <th className="border border-border px-4 py-2 text-left">Uploaded At</th>
+                    <th className="border border-border px-4 py-2 text-left">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reports.map((report) => (
+                    <tr key={report.id} className="hover:bg-muted cursor-pointer">
+                      <td className="border border-border px-4 py-2">{report.title}</td>
+                      <td className="border border-border px-4 py-2">{report.profiles?.full_name}</td>
+                      <td className="border border-border px-4 py-2">{format(new Date(report.uploaded_at), 'MMM dd, yyyy')}</td>
+                      <td className="border border-border px-4 py-2 space-x-2">
+                        <a href={report.file_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center space-x-1 text-primary hover:underline">
+                          <Eye className="h-4 w-4" />
+                          <span>View</span>
+                        </a>
+                        <a href={report.file_url} download={report.file_name} className="inline-flex items-center space-x-1 text-primary hover:underline">
+                          <Download className="h-4 w-4" />
+                          <span>Download</span>
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
 
-            {appointments.length === 0 ? (
-              <Card>
-                <CardContent className="text-center py-12">
-                  <Calendar className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No appointments today</h3>
-                  <p className="text-muted-foreground">Your schedule is clear for today</p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid gap-6">
-                {appointments.map((appointment) => (
-                  <Card key={appointment.id}>
-                    <CardContent className="p-6">
-                      <div className="flex justify-between items-start mb-4">
-                        <div>
-                          <h4 className="text-lg font-semibold">{appointment.profiles?.full_name}</h4>
-                          <p className="text-muted-foreground">
-                            {appointment.services?.name} - {appointment.services?.duration_minutes} minutes
-                          </p>
-                        </div>
-                        <Badge className={getStatusColor(appointment.status)}>
-                          {appointment.status}
-                        </Badge>
-                      </div>
-                      
-                      <div className="grid md:grid-cols-3 gap-4 text-sm mb-4">
-                        <div className="flex items-center">
-                          <Calendar className="h-4 w-4 mr-2 text-primary" />
-                          {format(new Date(appointment.appointment_date), 'EEEE, MMMM dd, yyyy')}
-                        </div>
-                        <div className="flex items-center">
-                          <Clock className="h-4 w-4 mr-2 text-primary" />
-                          {appointment.appointment_time}
-                        </div>
-                        <div className="flex items-center">
-                          <User className="h-4 w-4 mr-2 text-primary" />
-                          {appointment.profiles?.phone}
-                        </div>
-                      </div>
-                      
-                      {appointment.notes && (
-                        <div className="mb-4 p-3 bg-muted/50 rounded-lg">
-                          <p className="text-sm"><strong>Notes:</strong> {appointment.notes}</p>
-                        </div>
-                      )}
-
-                      <div className="flex space-x-2">
-                        <Select value={appointment.status} onValueChange={(value) => updateAppointmentStatus(appointment.id, value)}>
-                          <SelectTrigger className="w-40">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="scheduled">Scheduled</SelectItem>
-                            <SelectItem value="confirmed">Confirmed</SelectItem>
-                            <SelectItem value="completed">Completed</SelectItem>
-                            <SelectItem value="cancelled">Cancelled</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        
-                        <Dialog open={prescriptionDialog} onOpenChange={setPrescriptionDialog}>
-                          <DialogTrigger asChild>
-                            <Button 
-                              variant="outline"
-                              onClick={() => setSelectedAppointment(appointment)}
-                            >
-                              <Plus className="h-4 w-4 mr-2" />
-                              Add Prescription
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle>Create Prescription</DialogTitle>
-                            </DialogHeader>
-                            <div className="space-y-4">
-                              <div>
-                                <Label htmlFor="medications">Medications *</Label>
-                                <Textarea
-                                  id="medications"
-                                  value={prescriptionForm.medications}
-                                  onChange={(e) => setPrescriptionForm(prev => ({ ...prev, medications: e.target.value }))}
-                                  placeholder="List medications with dosage..."
-                                  rows={4}
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="instructions">Instructions</Label>
-                                <Textarea
-                                  id="instructions"
-                                  value={prescriptionForm.instructions}
-                                  onChange={(e) => setPrescriptionForm(prev => ({ ...prev, instructions: e.target.value }))}
-                                  placeholder="Additional instructions for the patient..."
-                                  rows={3}
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="follow-up">Follow-up Date</Label>
-                                <Input
-                                  id="follow-up"
-                                  type="date"
-                                  value={prescriptionForm.followUpDate}
-                                  onChange={(e) => setPrescriptionForm(prev => ({ ...prev, followUpDate: e.target.value }))}
-                                />
-                              </div>
-                              <div className="flex justify-end space-x-2">
-                                <Button variant="outline" onClick={() => setPrescriptionDialog(false)}>
-                                  Cancel
-                                </Button>
-                                <Button onClick={handlePrescriptionSubmit}>
-                                  Create Prescription
-                                </Button>
-                              </div>
-                            </div>
-                          </DialogContent>
-                        </Dialog>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
+            {/* Report Dialog */}
+            <Dialog open={reportDialog} onOpenChange={setReportDialog}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Upload Medical Report</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  handleReportUpload();
+                }}>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="reportPatientId">Patient</Label>
+                      <Select
+                        onValueChange={(value) => setReportForm(prev => ({ ...prev, patientId: value }))}
+                        value={reportForm.patientId}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a patient" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {patients.map((patient) => (
+                            <SelectItem key={patient.id} value={patient.id}>{patient.full_name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="title">Title</Label>
+                      <Input
+                        id="title"
+                        value={reportForm.title}
+                        onChange={(e) => setReportForm(prev => ({ ...prev, title: e.target.value }))}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="file">File</Label>
+                      <Input
+                        id="file"
+                        type="file"
+                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                        onChange={(e) => setReportForm(prev => ({ ...prev, file: e.target.files ? e.target.files[0] : null }))}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="charge">Charge (optional)</Label>
+                      <Input
+                        id="charge"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={reportForm.charge}
+                        onChange={(e) => setReportForm(prev => ({ ...prev, charge: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="chargeDescription">Charge Description</Label>
+                      <Input
+                        id="chargeDescription"
+                        value={reportForm.chargeDescription}
+                        onChange={(e) => setReportForm(prev => ({ ...prev, chargeDescription: e.target.value }))}
+                      />
+                    </div>
+                    <Button type="submit" className="w-full" disabled={uploadingReport}>
+                      {uploadingReport ? 'Uploading...' : 'Upload Report'}
+                    </Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
           </TabsContent>
 
-          <TabsContent value="prescriptions" className="space-y-6">
-            <h3 className="text-xl font-semibold">Recent Prescriptions</h3>
+          <TabsContent value="billing" className="space-y-4">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold">Billing</h2>
+              <Button onClick={() => setBillingDialog(true)}><Plus className="mr-2 h-4 w-4" /> Add Billing</Button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full table-auto border-collapse border border-border">
+                <thead>
+                  <tr className="bg-background">
+                    <th className="border border-border px-4 py-2 text-left">Patient</th>
+                    <th className="border border-border px-4 py-2 text-left">Service Type</th>
+                    <th className="border border-border px-4 py-2 text-left">Amount</th>
+                    <th className="border border-border px-4 py-2 text-left">Description</th>
+                    <th className="border border-border px-4 py-2 text-left">Status</th>
+                    <th className="border border-border px-4 py-2 text-left">Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {billing.map((bill) => (
+                    <tr key={bill.id} className="hover:bg-muted cursor-pointer">
+                      <td className="border border-border px-4 py-2">{bill.profiles?.full_name}</td>
+                      <td className="border border-border px-4 py-2">{bill.service_type}</td>
+                      <td className="border border-border px-4 py-2">${bill.amount.toFixed(2)}</td>
+                      <td className="border border-border px-4 py-2">{bill.description}</td>
+                      <td className="border border-border px-4 py-2">
+                        <Badge className={getStatusColor(bill.status)}>{bill.status}</Badge>
+                      </td>
+                      <td className="border border-border px-4 py-2">{format(new Date(bill.created_at), 'MMM dd, yyyy')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
-            {prescriptions.length === 0 ? (
-              <Card>
-                <CardContent className="text-center py-12">
-                  <FileText className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No prescriptions yet</h3>
-                  <p className="text-muted-foreground">Prescriptions will appear here after you create them</p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid gap-6">
-                {prescriptions.map((prescription) => (
-                  <Card key={prescription.id}>
-                    <CardContent className="p-6">
-                      <div className="flex justify-between items-start mb-4">
-                        <div>
-                          <h4 className="text-lg font-semibold">Prescription</h4>
-                          <p className="text-muted-foreground">
-                            Patient: {prescription.profiles?.full_name}
-                          </p>
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          {format(new Date(prescription.created_at), 'MMM dd, yyyy')}
-                        </p>
-                      </div>
-                      
-                      <div className="space-y-4">
-                        <div>
-                          <h5 className="font-medium mb-2">Medications:</h5>
-                          <p className="text-muted-foreground whitespace-pre-line">{prescription.medications}</p>
-                        </div>
-                        
-                        {prescription.instructions && (
-                          <div>
-                            <h5 className="font-medium mb-2">Instructions:</h5>
-                            <p className="text-muted-foreground whitespace-pre-line">{prescription.instructions}</p>
-                          </div>
-                        )}
-                        
-                        {prescription.follow_up_date && (
-                          <div className="bg-primary/5 p-3 rounded-lg">
-                            <p className="text-sm">
-                              <strong>Follow-up Date:</strong> {format(new Date(prescription.follow_up_date), 'MMMM dd, yyyy')}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </TabsContent>
-
-          <TabsContent value="reports" className="space-y-6">
-            <h3 className="text-xl font-semibold">Medical Reports</h3>
-
-            <Card>
-              <CardContent className="text-center py-12">
-                <Upload className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">Reports Management</h3>
-                <p className="text-muted-foreground mb-4">
-                  Upload and manage medical reports for your patients
-                </p>
-                <Button onClick={() => setReportDialog(true)}>
-                  <Upload className="h-4 w-4 mr-2" />
-                  Upload New Report
-                </Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="profile" className="space-y-6">
-            <h3 className="text-xl font-semibold">Doctor Profile</h3>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Professional Information</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-sm font-medium text-muted-foreground">Full Name</Label>
-                    <p className="text-foreground">{doctorProfile?.name}</p>
+            {/* Billing Dialog */}
+            <Dialog open={billingDialog} onOpenChange={setBillingDialog}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add Billing Record</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  handleAddBilling();
+                }}>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="billingPatientId">Patient</Label>
+                      <Select
+                        onValueChange={(value) => setBillingForm(prev => ({ ...prev, patientId: value }))}
+                        value={billingForm.patientId}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a patient" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {patients.map((patient) => (
+                            <SelectItem key={patient.id} value={patient.id}>{patient.full_name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="serviceType">Service Type</Label>
+                      <Input
+                        id="serviceType"
+                        value={billingForm.serviceType}
+                        onChange={(e) => setBillingForm(prev => ({ ...prev, serviceType: e.target.value }))}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="amount">Amount</Label>
+                      <Input
+                        id="amount"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={billingForm.amount}
+                        onChange={(e) => setBillingForm(prev => ({ ...prev, amount: e.target.value }))}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="description">Description</Label>
+                      <Textarea
+                        id="description"
+                        value={billingForm.description}
+                        onChange={(e) => setBillingForm(prev => ({ ...prev, description: e.target.value }))}
+                      />
+                    </div>
+                    <Button type="submit" className="w-full">Add Billing</Button>
                   </div>
-                  <div>
-                    <Label className="text-sm font-medium text-muted-foreground">Specialization</Label>
-                    <p className="text-foreground">{doctorProfile?.specialization}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-muted-foreground">Qualification</Label>
-                    <p className="text-foreground">{doctorProfile?.qualification}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-muted-foreground">Experience</Label>
-                    <p className="text-foreground">{doctorProfile?.experience_years} years</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </form>
+              </DialogContent>
+            </Dialog>
           </TabsContent>
         </Tabs>
       </div>

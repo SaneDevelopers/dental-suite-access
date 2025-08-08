@@ -75,6 +75,51 @@ export type Database = {
           },
         ]
       }
+      billing: {
+        Row: {
+          amount: number
+          appointment_id: string | null
+          created_at: string
+          description: string | null
+          doctor_id: string
+          id: string
+          paid_at: string | null
+          patient_id: string
+          prescription_id: string | null
+          report_id: string | null
+          service_type: string
+          status: string | null
+        }
+        Insert: {
+          amount: number
+          appointment_id?: string | null
+          created_at?: string
+          description?: string | null
+          doctor_id: string
+          id?: string
+          paid_at?: string | null
+          patient_id: string
+          prescription_id?: string | null
+          report_id?: string | null
+          service_type: string
+          status?: string | null
+        }
+        Update: {
+          amount?: number
+          appointment_id?: string | null
+          created_at?: string
+          description?: string | null
+          doctor_id?: string
+          id?: string
+          paid_at?: string | null
+          patient_id?: string
+          prescription_id?: string | null
+          report_id?: string | null
+          service_type?: string
+          status?: string | null
+        }
+        Relationships: []
+      }
       clinic_info: {
         Row: {
           about_us: string | null
@@ -177,6 +222,45 @@ export type Database = {
           is_public?: boolean | null
           location?: string | null
           title?: string
+        }
+        Relationships: []
+      }
+      medical_reports: {
+        Row: {
+          appointment_id: string | null
+          doctor_id: string
+          file_name: string
+          file_type: string | null
+          file_url: string
+          id: string
+          notes: string | null
+          patient_id: string
+          title: string
+          uploaded_at: string
+        }
+        Insert: {
+          appointment_id?: string | null
+          doctor_id: string
+          file_name: string
+          file_type?: string | null
+          file_url: string
+          id?: string
+          notes?: string | null
+          patient_id: string
+          title: string
+          uploaded_at?: string
+        }
+        Update: {
+          appointment_id?: string | null
+          doctor_id?: string
+          file_name?: string
+          file_type?: string | null
+          file_url?: string
+          id?: string
+          notes?: string | null
+          patient_id?: string
+          title?: string
+          uploaded_at?: string
         }
         Relationships: []
       }
